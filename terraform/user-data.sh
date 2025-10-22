@@ -54,7 +54,7 @@ fi
 
 # Create systemd service for SCIM server
 echo "⚙️  Creating systemd service..."
-cat > /etc/systemd/system/scim-demo.service << 'EOF'
+cat > /etc/systemd/system/scim-demo.service <<EOF
 [Unit]
 Description=SCIM Entitlements Demo Server
 Documentation=https://github.com/${github_repo}
