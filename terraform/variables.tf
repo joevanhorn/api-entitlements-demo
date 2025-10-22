@@ -4,6 +4,18 @@ variable "aws_region" {
   default     = "us-east-1"
 }
 
+variable "environment" {
+  description = "Environment name (e.g., dev, staging, prod)"
+  type        = string
+  default     = "dev"
+}
+
+variable "project_name" {
+  description = "Project name for resource naming"
+  type        = string
+  default     = "scim-demo"
+}
+
 variable "domain_name" {
   description = "Domain name for the SCIM server"
   type        = string
@@ -54,4 +66,10 @@ variable "app_version" {
   description = "Application version hash - used to force instance replacement when code changes"
   type        = string
   default     = "initial"
+}
+
+variable "tags" {
+  description = "Additional tags to apply to all resources"
+  type        = map(string)
+  default     = {}
 }
