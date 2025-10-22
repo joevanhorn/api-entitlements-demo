@@ -44,12 +44,14 @@ output "log_command" {
 }
 
 output "okta_configuration" {
-  description = "Okta SCIM configuration values"
+  description = "Okta SCIM configuration values (both auth options)"
   value = {
-    scim_base_url      = "https://${var.domain_name}/scim/v2"
-    auth_header_name   = "Authorization"
-    auth_header_value  = "Bearer ${var.scim_auth_token}"
-    unique_identifier  = "userName"
+    scim_base_url     = "https://${var.domain_name}/scim/v2"
+    header_auth_token = var.scim_auth_token
+    basic_user        = var.scim_basic_user
+    basic_pass        = var.scim_basic_pass
+    unique_identifier = "userName"
   }
   sensitive = true
 }
+

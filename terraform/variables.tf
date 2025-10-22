@@ -44,3 +44,16 @@ variable "allowed_ssh_cidr" {
   type        = list(string)
   default     = ["0.0.0.0/0"]
 }
+
+variable "scim_basic_user" {
+  description = "Username for Basic Auth (SCIM)"
+  type        = string
+  default     = "admin"
+}
+
+variable "scim_basic_pass" {
+  description = "Password for Basic Auth (SCIM)"
+  type        = string
+  sensitive   = true
+  default     = "password" # if empty, Basic won't be enabled unless you set it
+}
