@@ -9,6 +9,63 @@ import os
 
 app = Flask(__name__)
 
+# --- BEGIN AUTH MIDDLEWARE (Basic + Bearer) ---
+import os
+from base64 import b64decode
+from flask import request, jsonify
+
+# env-driven secrets
+_EXPECTED_BEARER = os.environ.get("SCIM_AUTH_TOKEN", "").strip()
+_BASIC_USER = os.environ.get("SCIM_BASIC_USER", "").strip()
+_BASIC_PASS = os.environ.get("SCIM_BASIC_PASS", "").strip()
+
+# paths that remain unauthenticated
+_EXEMPT = {
+    ("GET", "/"),
+    ("GET", "/health"),
+    ("GET", "/scim/v2/ServiceProviderConfig"),
+}
+
+def _bearer_ok(h: str) -> bool:
+    if not _EXPECTED_BEARER:
+        return False
+    if not h or not h.startswith("Bearer "):
+        return False
+    token = h.split(None, 1)[1].strip()
+    return token == _EXPECTED_BEARER
+
+def _basic_ok(h: str) -> bool:
+    if not (__BASIC_USER and __BASIC_PASS):
+        return False
+    if not h or not h.startswith("Basic "):
+        return False
+    try:
+        raw = b64decode(h.split(None, 1)[1]).decode("utf-8", "ignore")
+    except Exception:
+        return False
+    if ":" not in raw:
+        return False
+    u, p = raw.split(":", 1)
+    return (u == _BASIC_USER) and (p == _BASIC_PASS)
+
+@app.before_request
+def _require_auth_for_scim():
+    key = (request.method.upper(), request.path)
+    if key in _EXEMPT:
+        return  # allow unauthenticated
+
+    if request.path.startswith("/scim/v2/"):
+        auth = request.headers.get("Authorization", "")
+        if _bearer_ok(auth) or _basic_ok(auth):
+            return  # authorized
+        return jsonify({
+            "schemas": ["urn:ietf:params:scim:api:messages:2.0:Error"],
+            "detail": "Unauthorized - Invalid or missing credentials",
+            "status": "401",
+        }), 401
+# --- END AUTH MIDDLEWARE ---
+
+
 # In-memory storage - simulates your cloud application's database
 users_db = {}
 entitlements_db = {
