@@ -78,27 +78,51 @@ jobs:
           echo "scim_base_url=$(terraform output -raw scim_base_url)" >> $GITHUB_OUTPUT
           echo "public_ip=$(terraform output -raw public_ip)" >> $GITHUB_OUTPUT
           echo "ssh_command=$(terraform output -raw ssh_command)" >> $GITHUB_OUTPUT
+          echo "domain_name=$(terraform output -raw domain_name)" >> $GITHUB_OUTPUT
       
-      - name: Wait for Server Initialization
-        run: |
-          echo "⏳ Waiting for server to complete setup (2-3 minutes)..."
-          sleep 120
-          
-          for i in {1..10}; do
-            echo "Attempt $i/10: Checking server health..."
-            STATUS=$(curl -s -o /dev/null -w "%{http_code}" ${{ steps.outputs.outputs.dashboard_url }}/health || echo "000")
-            
-            if [ "$STATUS" = "200" ]; then
-              echo "✅ Server is ready and responding!"
-              exit 0
-            fi
-            
-            echo "Server status: $STATUS - Waiting 30 seconds..."
-            sleep 30
-          done
-          
-          echo "⚠️ Server may still be initializing. Check manually at: ${{ steps.outputs.outputs.dashboard_url }}"
-          echo "You can also SSH to check logs: ${{ steps.outputs.outputs.ssh_command }}"
+      - name: Wait for Server Initialization (Caddy + Flask)
+  run: |
+    set -euo pipefail
+
+    DOMAIN="${{ steps.outputs.outputs.domain_name }}"
+    IP="${{ steps.outputs.outputs.public_ip }}"
+    HEALTH="https://${{ steps.outputs.outputs.domain_name }}/health"
+
+    echo "⏳ Waiting for server to complete setup…"
+    echo "   Domain: $DOMAIN"
+    echo "   IP:     $IP"
+    echo "   Health: $HEALTH"
+    echo
+
+    # Give cloud-init / systemd a head start (Caddy cert + Flask warmup)
+    sleep 120
+
+    # Try up to ~10 minutes: 20 attempts x 30s = 600s
+    for i in $(seq 1 20); do
+      # Force SNI for $DOMAIN but resolve to the fresh EIP to bypass DNS lag
+      CODE=$(curl -ksS -o /dev/null -w "%{http_code}" \
+        --connect-timeout 10 --max-time 20 \
+        --resolve "${DOMAIN}:443:${IP}" \
+        "$HEALTH" || echo "000")
+
+      echo "Attempt $i/20 → HTTP $CODE"
+      if [ "$CODE" = "200" ]; then
+        echo "✅ Server is ready and responding!"
+        exit 0
+      fi
+
+      # Print a little context on first couple attempts
+      if [ "$i" -le 3 ]; then
+        echo "   Note: DNS/ACME may still be propagating. Retrying…"
+      fi
+
+      sleep 30
+    done
+
+    echo "⚠️  Health check did not reach 200 within the window."
+    echo "    Try: ${{ steps.outputs.outputs.ssh_command }} and 'sudo journalctl -u scim-demo -f'"
+    exit 1
+
       
       - name: Create Deployment Summary
         run: |
