@@ -35,7 +35,7 @@ def _bearer_ok(h: str) -> bool:
     return token == _EXPECTED_BEARER
 
 def _basic_ok(h: str) -> bool:
-    if not (__BASIC_USER and __BASIC_PASS):
+    if not (_BASIC_USER and _BASIC_PASS):
         return False
     if not h or not h.startswith("Basic "):
         return False
@@ -124,19 +124,6 @@ def simulate_cloud_app_call(operation, data):
     print(f"   [In production, this would call your actual cloud app's API]")
     print(f"{'='*70}\n")
     return {"success": True, "message": "Operation completed"}
-
-def check_auth():
-    """Verify Bearer token authentication"""
-    auth = request.headers.get('Authorization', '')
-    expected_token = f"Bearer {app.config.get('SCIM_AUTH_TOKEN', 'demo-token-12345')}"
-    
-    if auth != expected_token:
-        return jsonify({
-            "schemas": ["urn:ietf:params:scim:api:messages:2.0:Error"],
-            "status": "401",
-            "detail": "Unauthorized - Invalid or missing bearer token"
-        }), 401
-    return None
 
 # Dashboard HTML template
 DASHBOARD_HTML = '''
@@ -457,8 +444,6 @@ def service_provider_config():
 @app.route('/scim/v2/ResourceTypes', methods=['GET'])
 def get_resource_types():
     """Resource types discovery"""
-    auth_error = check_auth()
-    if auth_error: return auth_error
     
     log_activity("Resource Discovery", "Okta discovered available resource types")
     print("\n📋 Okta is discovering resource types...")
@@ -493,8 +478,6 @@ def get_resource_types():
 @app.route('/scim/v2/Schemas', methods=['GET'])
 def get_schemas():
     """Schemas endpoint"""
-    auth_error = check_auth()
-    if auth_error: return auth_error
     
     return jsonify({
         "schemas": ["urn:ietf:params:scim:api:messages:2.0:ListResponse"],
@@ -505,8 +488,6 @@ def get_schemas():
 @app.route('/scim/v2/AppRoles', methods=['GET'])
 def get_app_roles():
     """List all available application roles"""
-    auth_error = check_auth()
-    if auth_error: return auth_error
     
     log_activity(
         "Entitlement Discovery",
@@ -539,8 +520,6 @@ def get_app_roles():
 @app.route('/scim/v2/Users', methods=['POST'])
 def create_user():
     """Create a new user"""
-    auth_error = check_auth()
-    if auth_error: return auth_error
     
     data = request.json
     user_id = f"user_{len(users_db) + 1}"
@@ -591,8 +570,6 @@ def create_user():
 @app.route('/scim/v2/Users/<user_id>', methods=['GET'])
 def get_user(user_id):
     """Retrieve a specific user"""
-    auth_error = check_auth()
-    if auth_error: return auth_error
     
     user = users_db.get(user_id)
     if not user:
@@ -622,8 +599,6 @@ def get_user(user_id):
 @app.route('/scim/v2/Users/<user_id>', methods=['PUT'])
 def update_user(user_id):
     """Full update of a user"""
-    auth_error = check_auth()
-    if auth_error: return auth_error
     
     user = users_db.get(user_id)
     if not user:
@@ -665,8 +640,6 @@ def update_user(user_id):
 @app.route('/scim/v2/Users/<user_id>', methods=['PATCH'])
 def patch_user(user_id):
     """Partial update of a user"""
-    auth_error = check_auth()
-    if auth_error: return auth_error
     
     print(f"\n{'='*70}")
     print(f"🔧 PATCHING USER: {user_id}")
@@ -745,8 +718,6 @@ def patch_user(user_id):
 @app.route('/scim/v2/Users', methods=['GET'])
 def list_users():
     """List/search users"""
-    auth_error = check_auth()
-    if auth_error: return auth_error
     
     filter_param = request.args.get('filter', '')
     start_index = int(request.args.get('startIndex', 1))
@@ -787,8 +758,6 @@ def list_users():
 @app.route('/scim/v2/Users/<user_id>', methods=['DELETE'])
 def delete_user(user_id):
     """Delete a user"""
-    auth_error = check_auth()
-    if auth_error: return auth_error
     
     if user_id in users_db:
         username = users_db[user_id]['userName']
