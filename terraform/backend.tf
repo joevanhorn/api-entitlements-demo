@@ -1,7 +1,7 @@
 terraform {
   backend "s3" {
     # IMPORTANT: Change this to your unique bucket name!
-    bucket         = "joevanhorn-scim-terraform-state"
+    bucket         = "okta-entitlements-opp"
     key            = "api-entitlements-demo/terraform.tfstate"
     region         = "us-east-1"
     encrypt        = true
