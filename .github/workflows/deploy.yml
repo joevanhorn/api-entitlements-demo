@@ -62,6 +62,8 @@ jobs:
             -var="domain_name=${{ secrets.DOMAIN_NAME }}" \
             -var="route53_zone_id=${{ secrets.ROUTE53_ZONE_ID }}" \
             -var="scim_auth_token=${{ secrets.SCIM_AUTH_TOKEN || 'demo-token-12345' }}" \
+            -var="scim_basic_user=${{ secrets.SCIM_BASIC_USER || 'scim' }}" \
+            -var="scim_basic_pass=${{ secrets.SCIM_BASIC_PASS || '' }}" \
             -out=tfplan
       
       - name: Terraform Apply
