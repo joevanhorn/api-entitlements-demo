@@ -79,7 +79,7 @@ WorkingDirectory=/opt/scim-demo
 # Read environment from .env (optional with '-')
 EnvironmentFile=-/opt/scim-demo/.env
 Environment="PYTHONUNBUFFERED=1"
-EExecStart=/bin/bash -lc "set -a; . /opt/scim-demo/.env; set +a; exec /usr/bin/python3 /opt/scim-demo/demo_scim_server.py"
+ExecStart=/bin/bash -lc "set -a; . /opt/scim-demo/.env; set +a; exec /usr/bin/python3 /opt/scim-demo/demo_scim_server.py"
 Restart=always
 RestartSec=10
 StandardOutput=journal
@@ -90,7 +90,7 @@ WantedBy=multi-user.target
 EOF
 
 # Start and enable SCIM service
-echo "🚀 Starting SCim service..."
+echo "🚀 Starting SCIM service..."
 systemctl daemon-reload
 systemctl enable scim-demo
 systemctl start scim-demo
