@@ -1,0 +1,94 @@
+name: Destroy SCIM Demo
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type "destroy" to confirm deletion of all resources'
+        required: true
+        type: string
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  destroy:
+    name: Destroy Infrastructure
+    runs-on: ubuntu-latest
+    
+    defaults:
+      run:
+        working-directory: terraform
+    
+    steps:
+      - name: Verify Confirmation
+        run: |
+          if [ "${{ github.event.inputs.confirm }}" != "destroy" ]; then
+            echo "❌ Confirmation failed!"
+            echo "You must type 'destroy' exactly to proceed."
+            exit 1
+          fi
+          echo "✅ Confirmation verified"
+      
+      - name: Checkout Code
+        uses: actions/checkout@v4
+      
+      - name: Configure AWS Credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          role-session-name: GitHubActions-SCIM-Destroy
+          aws-region: us-east-1
+      
+      - name: Verify AWS Identity
+        run: |
+          echo "🔐 Verifying AWS authentication..."
+          aws sts get-caller-identity
+      
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.6.0
+      
+      - name: Terraform Init
+        run: terraform init
+      
+      - name: Terraform Destroy
+        run: |
+          echo "🗑️  Destroying all AWS resources..."
+          terraform destroy -auto-approve \
+            -var="domain_name=${{ secrets.DOMAIN_NAME }}" \
+            -var="route53_zone_id=${{ secrets.ROUTE53_ZONE_ID }}" \
+            -var="scim_auth_token=${{ secrets.SCIM_AUTH_TOKEN || 'demo-token-12345' }}"
+      
+      - name: Destruction Summary
+        if: always()
+        run: |
+          if [ "$?" -eq 0 ]; then
+            cat >> $GITHUB_STEP_SUMMARY << 'EOF'
+          ## 🗑️ Infrastructure Destroyed
+          
+          All AWS resources have been successfully removed:
+          - ✅ EC2 Instance terminated
+          - ✅ Elastic IP released
+          - ✅ Security Group deleted
+          - ✅ IAM Role and Instance Profile deleted
+          - ✅ Route53 DNS record removed
+          
+          **Note:** The S3 bucket for Terraform state is NOT deleted to preserve state history.
+          To remove it manually:
+          ```bash
+          aws s3 rm s3://YOUR-BUCKET-NAME --recursive
+          aws s3 rb s3://YOUR-BUCKET-NAME
+          ```
+          EOF
+          else
+            cat >> $GITHUB_STEP_SUMMARY << 'EOF'
+          ## ❌ Destruction Failed
+          
+          Some resources may not have been deleted. Please check the logs above.
+          
+          You may need to manually clean up resources in the AWS Console.
+          EOF
+          fi
