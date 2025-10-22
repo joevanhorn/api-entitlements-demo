@@ -40,6 +40,16 @@ jobs:
           aws sts get-caller-identity
           echo "✅ Successfully authenticated with AWS"
       
+      - name: Calculate App File Hash
+        id: file_hash
+        run: |
+          # Calculate hash of Python file to force redeployment when it changes
+          cd ..
+          APP_HASH=$(sha256sum demo_scim_server.py | cut -d' ' -f1 | cut -c1-8)
+          echo "app_hash=$APP_HASH" >> "$GITHUB_OUTPUT"
+          echo "📦 Application file hash: $APP_HASH"
+          echo "   This hash will be included in user-data to force instance replacement when code changes"
+      
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
@@ -64,6 +74,7 @@ jobs:
             -var="scim_auth_token=${{ secrets.SCIM_AUTH_TOKEN || 'demo-token-12345' }}" \
             -var="scim_basic_user=${{ secrets.SCIM_BASIC_USER || 'scim' }}" \
             -var="scim_basic_pass=${{ secrets.SCIM_BASIC_PASS || '' }}" \
+            -var="app_version=${{ steps.file_hash.outputs.app_hash }}" \
             -out=tfplan
       
       - name: Terraform Apply
@@ -133,6 +144,7 @@ jobs:
           | **SCIM API** | `${{ steps.tf.outputs.scim_base_url }}` |
           | **Health Check** | [${{ steps.tf.outputs.dashboard_url }}/health](${{ steps.tf.outputs.dashboard_url }}/health) |
           | **Public IP** | `${{ steps.tf.outputs.public_ip }}` |
+          | **App Version** | `${{ steps.file_hash.outputs.app_hash }}` |
 
           ### 🔧 Configure in Okta (Basic Auth recommended)
 
@@ -156,4 +168,5 @@ jobs:
           ```
 
           *Deployment completed at $(date)*  
+          *Code version: ${{ steps.file_hash.outputs.app_hash }}*
           EOF
