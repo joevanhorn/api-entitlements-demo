@@ -120,14 +120,15 @@ resource "aws_instance" "scim_server" {
   iam_instance_profile   = aws_iam_instance_profile.scim_server.name
   
   # User data script for server initialization
+  # IMPORTANT: app_version is included to force replacement when Python code changes
   user_data = templatefile("${path.module}/user-data.sh", {
-  domain_name      = var.domain_name
-  scim_auth_token  = var.scim_auth_token
-  scim_basic_user  = var.scim_basic_user
-  scim_basic_pass  = var.scim_basic_pass
-  github_repo      = "joevanhorn/api-entitlements-demo"
-})
-
+    domain_name      = var.domain_name
+    scim_auth_token  = var.scim_auth_token
+    scim_basic_user  = var.scim_basic_user
+    scim_basic_pass  = var.scim_basic_pass
+    github_repo      = "joevanhorn/api-entitlements-demo"
+    app_version      = var.app_version
+  })
   
   user_data_replace_on_change = true
   
@@ -144,7 +145,8 @@ resource "aws_instance" "scim_server" {
   }
   
   tags = {
-    Name = "scim-demo-server"
+    Name        = "scim-demo-server"
+    AppVersion  = var.app_version
   }
   
   lifecycle {
