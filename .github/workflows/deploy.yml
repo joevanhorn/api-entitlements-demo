@@ -1,0 +1,165 @@
+name: Deploy SCIM Demo
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+env:
+  AWS_REGION: us-east-1
+
+# Required for OIDC
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy Infrastructure
+    runs-on: ubuntu-latest
+    
+    defaults:
+      run:
+        working-directory: terraform
+    
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+      
+      - name: Configure AWS Credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          role-session-name: GitHubActions-SCIM-Deploy
+          aws-region: ${{ env.AWS_REGION }}
+      
+      - name: Verify AWS Identity
+        run: |
+          echo "🔐 Verifying AWS authentication..."
+          aws sts get-caller-identity
+          echo "✅ Successfully authenticated with AWS"
+      
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.6.0
+      
+      - name: Terraform Init
+        run: |
+          echo "🔧 Initializing Terraform..."
+          terraform init
+      
+      - name: Terraform Validate
+        run: |
+          echo "✅ Validating Terraform configuration..."
+          terraform validate
+      
+      - name: Terraform Plan
+        run: |
+          echo "📋 Creating Terraform plan..."
+          terraform plan \
+            -var="domain_name=${{ secrets.DOMAIN_NAME }}" \
+            -var="route53_zone_id=${{ secrets.ROUTE53_ZONE_ID }}" \
+            -var="scim_auth_token=${{ secrets.SCIM_AUTH_TOKEN || 'demo-token-12345' }}" \
+            -out=tfplan
+      
+      - name: Terraform Apply
+        run: |
+          echo "🚀 Applying Terraform configuration..."
+          terraform apply -auto-approve tfplan
+      
+      - name: Get Terraform Outputs
+        id: outputs
+        run: |
+          echo "dashboard_url=$(terraform output -raw dashboard_url)" >> $GITHUB_OUTPUT
+          echo "scim_base_url=$(terraform output -raw scim_base_url)" >> $GITHUB_OUTPUT
+          echo "public_ip=$(terraform output -raw public_ip)" >> $GITHUB_OUTPUT
+          echo "ssh_command=$(terraform output -raw ssh_command)" >> $GITHUB_OUTPUT
+      
+      - name: Wait for Server Initialization
+        run: |
+          echo "⏳ Waiting for server to complete setup (2-3 minutes)..."
+          sleep 120
+          
+          for i in {1..10}; do
+            echo "Attempt $i/10: Checking server health..."
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" ${{ steps.outputs.outputs.dashboard_url }}/health || echo "000")
+            
+            if [ "$STATUS" = "200" ]; then
+              echo "✅ Server is ready and responding!"
+              exit 0
+            fi
+            
+            echo "Server status: $STATUS - Waiting 30 seconds..."
+            sleep 30
+          done
+          
+          echo "⚠️ Server may still be initializing. Check manually at: ${{ steps.outputs.outputs.dashboard_url }}"
+          echo "You can also SSH to check logs: ${{ steps.outputs.outputs.ssh_command }}"
+      
+      - name: Create Deployment Summary
+        run: |
+          cat >> $GITHUB_STEP_SUMMARY << 'EOF'
+          ## 🚀 Deployment Successful!
+          
+          ### 📍 Access Your Demo
+          
+          | Resource | URL |
+          |----------|-----|
+          | **Dashboard** | [${{ steps.outputs.outputs.dashboard_url }}](${{ steps.outputs.outputs.dashboard_url }}) |
+          | **SCIM API** | `${{ steps.outputs.outputs.scim_base_url }}` |
+          | **Health Check** | [${{ steps.outputs.outputs.dashboard_url }}/health](${{ steps.outputs.outputs.dashboard_url }}/health) |
+          | **Public IP** | `${{ steps.outputs.outputs.public_ip }}` |
+          
+          ### 🔧 Configure in Okta
+          
+          1. **Add SCIM Application:**
+             - Applications → Browse App Catalog
+             - Search: "SCIM 2.0 Test App (Header Auth)"
+             - Add Integration
+          
+          2. **Configure Provisioning:**
+             ```
+             SCIM Base URL: ${{ steps.outputs.outputs.scim_base_url }}
+             Authorization Header: Authorization
+             Header Value: Bearer ${{ secrets.SCIM_AUTH_TOKEN || 'demo-token-12345' }}
+             Unique identifier: userName
+             ```
+          
+          3. **Test Connection** → Should succeed!
+          
+          4. **Enable Features:**
+             - Provisioning → To App → Edit
+             - ☑️ Create Users
+             - ☑️ Update User Attributes
+             - ☑️ Deactivate Users
+          
+          ### 🔍 Troubleshooting
+          
+          **SSH Access:**
+          ```bash
+          ${{ steps.outputs.outputs.ssh_command }}
+          ```
+          
+          **Check logs:**
+          ```bash
+          # Server setup log
+          tail -f /var/log/user-data.log
+          
+          # SCIM service
+          sudo journalctl -u scim-demo -f
+          
+          # Caddy (HTTPS)
+          sudo journalctl -u caddy -f
+          ```
+          
+          **Test locally:**
+          ```bash
+          curl https://${{ steps.outputs.outputs.domain_name }}/health
+          ```
+          
+          ---
+          
+          *Deployment completed at $(date)*
+          EOF
