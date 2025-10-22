@@ -121,10 +121,13 @@ resource "aws_instance" "scim_server" {
   
   # User data script for server initialization
   user_data = templatefile("${path.module}/user-data.sh", {
-    domain_name     = var.domain_name
-    scim_auth_token = var.scim_auth_token
-    github_repo     = "joevanhorn/api-entitlements-demo"
-  })
+  domain_name      = var.domain_name
+  scim_auth_token  = var.scim_auth_token
+  scim_basic_user  = var.scim_basic_user
+  scim_basic_pass  = var.scim_basic_pass
+  github_repo      = "joevanhorn/api-entitlements-demo"
+})
+
   
   user_data_replace_on_change = true
   
