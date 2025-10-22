@@ -72,120 +72,88 @@ jobs:
           terraform apply -auto-approve tfplan
       
       - name: Get Terraform Outputs
-        id: outputs
+        id: tf
         run: |
-          echo "dashboard_url=$(terraform output -raw dashboard_url)" >> $GITHUB_OUTPUT
-          echo "scim_base_url=$(terraform output -raw scim_base_url)" >> $GITHUB_OUTPUT
-          echo "public_ip=$(terraform output -raw public_ip)" >> $GITHUB_OUTPUT
-          echo "ssh_command=$(terraform output -raw ssh_command)" >> $GITHUB_OUTPUT
-          echo "domain_name=$(terraform output -raw domain_name)" >> $GITHUB_OUTPUT
-      
+          echo "dashboard_url=$(terraform output -raw dashboard_url)" >> "$GITHUB_OUTPUT"
+          echo "scim_base_url=$(terraform output -raw scim_base_url)" >> "$GITHUB_OUTPUT"
+          echo "public_ip=$(terraform output -raw public_ip)" >> "$GITHUB_OUTPUT"
+          echo "ssh_command=$(terraform output -raw ssh_command)" >> "$GITHUB_OUTPUT"
+          echo "domain_name=$(terraform output -raw domain_name)" >> "$GITHUB_OUTPUT"
+
       - name: Wait for Server Initialization (Caddy + Flask)
-  run: |
-    set -euo pipefail
+        env:
+          DOMAIN_NAME: ${{ steps.tf.outputs.domain_name }}
+          PUBLIC_IP: ${{ steps.tf.outputs.public_ip }}
+        run: |
+          set -euo pipefail
 
-    DOMAIN="${{ steps.outputs.outputs.domain_name }}"
-    IP="${{ steps.outputs.outputs.public_ip }}"
-    HEALTH="https://${{ steps.outputs.outputs.domain_name }}/health"
+          DOMAIN="$DOMAIN_NAME"
+          IP="$PUBLIC_IP"
+          HEALTH="https://${DOMAIN}/health"
 
-    echo "⏳ Waiting for server to complete setup…"
-    echo "   Domain: $DOMAIN"
-    echo "   IP:     $IP"
-    echo "   Health: $HEALTH"
-    echo
+          echo "⏳ Waiting for server to complete setup…"
+          echo "   Domain: $DOMAIN"
+          echo "   IP:     $IP"
+          echo "   Health: $HEALTH"
+          echo
 
-    # Give cloud-init / systemd a head start (Caddy cert + Flask warmup)
-    sleep 120
+          # Give cloud-init / systemd / ACME a head start
+          sleep 120
 
-    # Try up to ~10 minutes: 20 attempts x 30s = 600s
-    for i in $(seq 1 20); do
-      # Force SNI for $DOMAIN but resolve to the fresh EIP to bypass DNS lag
-      CODE=$(curl -ksS -o /dev/null -w "%{http_code}" \
-        --connect-timeout 10 --max-time 20 \
-        --resolve "${DOMAIN}:443:${IP}" \
-        "$HEALTH" || echo "000")
+          # Try up to ~10 minutes: 20 attempts x 30s
+          for i in $(seq 1 20); do
+            CODE=$(curl -ksS -o /dev/null -w "%{http_code}" \
+              --connect-timeout 10 --max-time 20 \
+              --resolve "${DOMAIN}:443:${IP}" \
+              "$HEALTH" || echo "000")
 
-      echo "Attempt $i/20 → HTTP $CODE"
-      if [ "$CODE" = "200" ]; then
-        echo "✅ Server is ready and responding!"
-        exit 0
-      fi
+            echo "Attempt $i/20 → HTTP $CODE"
+            if [ "$CODE" = "200" ]; then
+              echo "✅ Server is ready and responding!"
+              exit 0
+            fi
+            [ "$i" -le 3 ] && echo "   Note: DNS/ACME may still be propagating. Retrying…"
+            sleep 30
+          done
 
-      # Print a little context on first couple attempts
-      if [ "$i" -le 3 ]; then
-        echo "   Note: DNS/ACME may still be propagating. Retrying…"
-      fi
+          echo "⚠️  Health check did not reach 200 within the window."
+          echo "    Try: ${{ steps.tf.outputs.ssh_command }} and 'sudo journalctl -u scim-demo -f'"
+          exit 1
 
-      sleep 30
-    done
-
-    echo "⚠️  Health check did not reach 200 within the window."
-    echo "    Try: ${{ steps.outputs.outputs.ssh_command }} and 'sudo journalctl -u scim-demo -f'"
-    exit 1
-
-      
       - name: Create Deployment Summary
         run: |
-          cat >> $GITHUB_STEP_SUMMARY << 'EOF'
+          cat >> "$GITHUB_STEP_SUMMARY" << 'EOF'
           ## 🚀 Deployment Successful!
-          
+
           ### 📍 Access Your Demo
-          
+
           | Resource | URL |
           |----------|-----|
-          | **Dashboard** | [${{ steps.outputs.outputs.dashboard_url }}](${{ steps.outputs.outputs.dashboard_url }}) |
-          | **SCIM API** | `${{ steps.outputs.outputs.scim_base_url }}` |
-          | **Health Check** | [${{ steps.outputs.outputs.dashboard_url }}/health](${{ steps.outputs.outputs.dashboard_url }}/health) |
-          | **Public IP** | `${{ steps.outputs.outputs.public_ip }}` |
-          
-          ### 🔧 Configure in Okta
-          
-          1. **Add SCIM Application:**
-             - Applications → Browse App Catalog
-             - Search: "SCIM 2.0 Test App (Header Auth)"
-             - Add Integration
-          
-          2. **Configure Provisioning:**
-             ```
-             SCIM Base URL: ${{ steps.outputs.outputs.scim_base_url }}
-             Authorization Header: Authorization
-             Header Value: Bearer ${{ secrets.SCIM_AUTH_TOKEN || 'demo-token-12345' }}
-             Unique identifier: userName
-             ```
-          
-          3. **Test Connection** → Should succeed!
-          
-          4. **Enable Features:**
-             - Provisioning → To App → Edit
-             - ☑️ Create Users
-             - ☑️ Update User Attributes
-             - ☑️ Deactivate Users
-          
-          ### 🔍 Troubleshooting
-          
-          **SSH Access:**
+          | **Dashboard** | [${{ steps.tf.outputs.dashboard_url }}](${{ steps.tf.outputs.dashboard_url }}) |
+          | **SCIM API** | `${{ steps.tf.outputs.scim_base_url }}` |
+          | **Health Check** | [${{ steps.tf.outputs.dashboard_url }}/health](${{ steps.tf.outputs.dashboard_url }}/health) |
+          | **Public IP** | `${{ steps.tf.outputs.public_ip }}` |
+
+          ### 🔧 Configure in Okta (Basic Auth recommended)
+
+          1. **SCIM Base URL:** `https://${{ steps.tf.outputs.domain_name }}/scim/v2`
+          2. **Basic Auth:** username/password from your secrets (`SCIM_BASIC_USER` / `SCIM_BASIC_PASS`)
+          3. **(Alt) Header Auth:** `Authorization: Bearer ${{ secrets.SCIM_AUTH_TOKEN }}`
+
+          **SSH Access**
           ```bash
-          ${{ steps.outputs.outputs.ssh_command }}
+          ${{ steps.tf.outputs.ssh_command }}
           ```
-          
-          **Check logs:**
+
+          **Check logs**
           ```bash
-          # Server setup log
-          tail -f /var/log/user-data.log
-          
+          # Server setup
+          sudo tail -f /var/log/user-data.log
           # SCIM service
           sudo journalctl -u scim-demo -f
-          
-          # Caddy (HTTPS)
+          # Caddy
           sudo journalctl -u caddy -f
           ```
-          
-          **Test locally:**
-          ```bash
-          curl https://${{ steps.outputs.outputs.domain_name }}/health
-          ```
-          
-          ---
-          
-          *Deployment completed at $(date)*
+
+          *Deployment completed at $(date)*  
           EOF
