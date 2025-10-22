@@ -1,11 +1,21 @@
-output "instance_id" {
-  description = "EC2 instance ID"
-  value       = aws_instance.scim_server.id
+output "dashboard_url" {
+  description = "URL to access the SCIM dashboard"
+  value       = "https://${var.domain_name}"
+}
+
+output "scim_base_url" {
+  description = "SCIM base URL for Okta configuration"
+  value       = "https://${var.domain_name}/scim/v2"
 }
 
 output "public_ip" {
-  description = "Public IP address of the server"
+  description = "Public IP address of the SCIM server"
   value       = aws_eip.scim_server.public_ip
+}
+
+output "instance_id" {
+  description = "EC2 instance ID"
+  value       = aws_instance.scim_server.id
 }
 
 output "domain_name" {
@@ -13,45 +23,12 @@ output "domain_name" {
   value       = var.domain_name
 }
 
-output "dashboard_url" {
-  description = "URL for the web dashboard"
-  value       = "https://${var.domain_name}"
-}
-
-output "scim_base_url" {
-  description = "SCIM Base URL to configure in Okta"
-  value       = "https://${var.domain_name}/scim/v2"
-}
-
-output "scim_health_url" {
-  description = "Health check endpoint"
-  value       = "https://${var.domain_name}/health"
-}
-
 output "ssh_command" {
   description = "SSH command to connect to the server"
-  value       = "ssh ubuntu@${aws_eip.scim_server.public_ip}"
+  value       = var.ssh_key_name != "" ? "ssh -i ${var.ssh_key_name}.pem ubuntu@${var.domain_name}" : "SSH key not configured"
 }
 
-output "ssm_command" {
-  description = "AWS Systems Manager command to connect"
-  value       = "aws ssm start-session --target ${aws_instance.scim_server.id}"
+output "app_version" {
+  description = "Current application version deployed"
+  value       = var.app_version
 }
-
-output "log_command" {
-  description = "Command to view server setup logs"
-  value       = "ssh ubuntu@${aws_eip.scim_server.public_ip} 'tail -f /var/log/user-data.log'"
-}
-
-output "okta_configuration" {
-  description = "Okta SCIM configuration values (both auth options)"
-  value = {
-    scim_base_url     = "https://${var.domain_name}/scim/v2"
-    header_auth_token = var.scim_auth_token
-    basic_user        = var.scim_basic_user
-    basic_pass        = var.scim_basic_pass
-    unique_identifier = "userName"
-  }
-  sensitive = true
-}
-
