@@ -60,6 +60,12 @@ jobs:
           echo "🔧 Initializing Terraform..."
           terraform init
       
+      - name: Terraform Format
+        run: |
+          echo "🎨 Formatting Terraform files..."
+          terraform fmt -recursive
+          echo "✅ Files formatted"
+      
       - name: Terraform Validate
         run: |
           echo "✅ Validating Terraform configuration..."
